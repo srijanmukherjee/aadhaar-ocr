@@ -6,3 +6,4 @@ data
 yolo11n.pt
 base64.txt
 *.png
+!images/*.png
