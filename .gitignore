@@ -1,0 +1,8 @@
+.venv
+__pycache__
+aadhaar-dataset
+datasets
+data
+yolo11n.pt
+base64.txt
+*.png
