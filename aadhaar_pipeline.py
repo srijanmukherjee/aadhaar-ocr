@@ -1,9 +1,10 @@
 import base64
 from dataclasses import dataclass
+import datetime
 from io import BytesIO
 import re
 import sys
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 from PIL import Image
 import numpy as np
 
@@ -38,7 +39,7 @@ class FeatureExtractionStep(PipelineStep):
             'date_of_birth-year': 'date_of_birth'
         }
 
-    def execute(self, _, image: str) -> Dict[str, Feature]:
+    def execute(self, _, image: Image) -> Dict[str, Feature]:
         predictions = self.model(image, verbose=False)
 
         if len(predictions) == 0:
@@ -99,25 +100,30 @@ class FeatureOpticalCharacterRecognitionStep(PipelineStep):
         image = cv2.cvtColor(np.array(feature.image), cv2.COLOR_RGB2BGR)
         image = image[y1:y2, x1:x2]
         image = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        image = self.preprocessing_pipeline.execute(config, {
+        images = self.preprocessing_pipeline.execute(config, {
             'id': feature.id,
             'image': image
         })
 
         if self.preview:
-            cv2.imwrite(f'{feature.id}.png', image)
+            for image in images:
+                cv2.imwrite(f'{feature.id}-{datetime.datetime.now().timestamp()}.png', image)
 
         if feature.id == 'aadhaar_number':
-            config = '--psm 7' # single line text
+            config = '--psm 7 -c tessedit_char_whitelist=0123456789' # single line text
         elif feature.id == 'address':
             config = '--psm 6' # block of text
         elif feature.id == 'name':
             config = '--psm 7'
         else:
             config = ''
-        
-        ocr_value = pytesseract.image_to_string(image, lang='eng', config=config)
-        logger.debug(f'[FeatureOpticalCharacterRecognitionStep] feature: {feature.id}, value: {ocr_value}')
+
+        for image in images:            
+            ocr_value: str = pytesseract.image_to_string(image, lang='eng', config=config)
+            logger.debug(f'[FeatureOpticalCharacterRecognitionStep] feature: {feature.id}, value: {ocr_value}')
+            if ocr_value.isalnum():
+                break
+
         return ocr_value
     
 class SanitizeValueStep(PipelineStep):
@@ -139,14 +145,14 @@ class AadhaarReducerStep(PipelineStep):
         return prev | curr
     
 class FeaturePreprocessingStep(PipelineStep):
-    def execute(self, _: Dict, data: any) -> cv2.Mat:
+    def execute(self, _: Dict, data: any) -> List[cv2.Mat]:
         if data['id'] == 'aadhaar_number':
-            return self.preprocess_aadhaar_number(data['image'])
+            return [self.preprocess_aadhaar_number(data['image']), data['image']]
         elif data['id'] == 'address':
-            return self.preprocess_adress(data['image'])
+            return [self.preprocess_adress(data['image'])]
         elif data['id'] == 'name':
-            return self.preprocess_name(data['image'])
-        return data['image']
+            return [self.preprocess_name(data['image'])]
+        return [data['image']]
     
     def preprocess_aadhaar_number(self, image: cv2.Mat) -> cv2.Mat:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -243,6 +249,8 @@ class GetCardStep(PipelineStep):
         auto_rotate_enabled = self.get_config(config, 'auto_rotate', True)
         if auto_rotate_enabled:
             cropped_image = self.rotate(cropped_image)
+
+        cv2.imwrite(f'{datetime.datetime.now().timestamp()}.png', cropped_image)
 
         return Image.fromarray(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
     

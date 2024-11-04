@@ -8,13 +8,16 @@ aadhaar_pipeline = build_aadhaar_pipeline(model, preview_ocr=True)
 
 base_aadhaar_pipieline_config = {
     'feature_threshold': {
-        'aadhaar_number': 0.5,
+        'aadhaar_number': 0.3,
         'name': 0.7,
         'date_of_birth': 0.5,
         'address': 0.8,
         'gender': 0.5
     },
-    'required_fields': ['aadhaar_number']
+    'required_fields': ['aadhaar_number'],
+    'get_card_step': {
+        'auto_rotate': False
+    }
 }
 
 app = FastAPI()
